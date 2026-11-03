@@ -12,13 +12,21 @@ src/
 │   ├── game.ts      GameState, createGame, applyAction (validation + reducer), events
 │   ├── view.ts      getPlayerView: the redacted, per-player view of the state
 │   └── index.ts     Public exports
-├── ai/opponent.ts   Computer opponent; input is a PlayerView only
+├── ai/opponent.ts   Computer opponents (Easy/Normal/Hard profiles); input is a PlayerView only
 ├── ui/
+│   ├── controller.ts GameController: owns the GameState, dispatches actions, schedules the CPUs
+│   ├── settings.ts  Game settings (players, difficulty, length), validation, persistence
+│   ├── setup.ts     Setup screen form binding and live settings summary
+│   ├── board.ts     Renders the table from the human's PlayerView, maps clicks to Actions
+│   ├── targeting.ts Which cards are sensible click targets right now (pure, unit-tested)
+│   ├── summary.ts   Scoreboard and end-of-round summary
 │   ├── cards.ts     Renders one card slot
-│   └── board.ts     Renders a PlayerView, maps clicks to Actions, formats the log
-├── main.ts          Browser controller: holds the state, dispatches actions, schedules the CPU
-└── style.css        Visuals carried over from the prototype
-tests/               Vitest suites (engine, AI, jsdom UI integration)
+│   └── log.ts       Formats public engine events for the game log
+├── main.ts          Entry point: setup screen ↔ game screen, keyboard shortcuts
+└── style.css        Desktop table layout (palette carried over from the prototype)
+scripts/
+└── e2e-firefox.mjs  Real-browser end-to-end test (headless Firefox, WebDriver BiDi, no dependencies)
+tests/               Vitest suites (engine, AI, UI logic, jsdom UI integration)
 docs/                This file and RULES.md
 ```
 
@@ -64,23 +72,45 @@ Every action carries the acting `player`. Locally, the UI and AI pass their own 
 
 It never contains card IDs (they are assigned in value order and would leak values), deck order, other players' knowledge sets, or the PRNG state. Events returned by `applyAction` are public too: peeks list target positions, never values. Tests assert that views differing only in hidden cards are deep-equal, and that the serialized view contains no `id`, `known` or `rngState` keys.
 
-### Computer opponent
+### Computer opponents
 
-`decideAction(view)` and `decideMatch(view)` in `src/ai/opponent.ts` take only a `PlayerView`, so by construction they can't see hidden cards or the deck. The strategy:
+`decideAction(view, profile, seed)` and `decideMatch(view, profile, seed)` in `src/ai/opponent.ts` take only a `PlayerView`, so by construction no difficulty level can see hidden cards or the deck. Their decisions are ordinary `Action`s, validated by the engine like a human's.
 
-- treat unknown cards as worth the deck average (about 6.3)
-- call KOMBIO when the estimated total is at most 7, at most one card is unknown, and every opponent's estimate is higher
-- take the discard when it beats its worst known card by 2 or more, or when it is 2 or lower and it has unknown cards
-- exchange a drawn card for its highest known card if lower, otherwise put it on an unknown slot if it is 4 or lower, otherwise discard it for its ability
-- use abilities purposefully: look at its own or opponents' unknown cards, and swap its high known cards for opponents' low or unknown cards
-- match only cards whose value it knows, preferring its own
-- after a wrong match on its card, make the matcher take the card if it is positive; give away its highest-estimated card after matching an opponent's
+Difficulty is a `Profile`: the same decision code with different parameters.
 
-A stronger opponent can implement the same two functions.
+| | Easy | Normal | Hard |
+| --- | --- | --- | --- |
+| Memory | Forgets each remembered card 15% of the time | Perfect | Perfect |
+| Estimate for unknown cards | Deck average (≈6.3) | Deck average | Average of the cards it hasn't seen |
+| Mistakes | 6% careless exchange or skipped ability; misses 30% of matches; 1% wrong-match guesses | None | None |
+| Matches opponents' cards | No | Yes | Yes |
+| Targets | First available | First available | The opponent with the lowest estimated hand |
+| Calls KOMBIO | Estimate ≤ 8 | Estimate ≤ 7 | Estimate ≤ 2 (patient) |
+| Match reaction (UI) | 2.6 s | 1.3 s | 0.8 s |
+
+Randomness (Easy's mistakes) comes from a seeded PRNG keyed by the visible game situation. Asking again in the same situation gives the same answer, which matters because the controller re-asks after every state change, and tests can check it.
+
+The profiles were tuned by simulation, playing complete 5-round games CPU against CPU:
+
+- **2 players, 500 games:** Hard averaged 48.6 points to Normal's 65.7 and won 325 of the 496 games that had a winner.
+- **2 players, 300 games:** Easy averaged 85.3 to Normal's 51.1 and won 58 of 299.
+- **4 players, 200 games:** one Hard player against three Normals won 92 games, where an equal player would win about 50.
+
+`tests/ai-difficulty.test.ts` checks the ordering Hard < Normal < Easy (average score) deterministically over 120 games.
 
 ### Browser controller
 
-`main.ts` keeps the authoritative `GameState` in memory, renders the human's `PlayerView`, and turns clicks into `Action`s. After every change it asks the AI, using the AI's own view, whether it wants to act. Turn actions run after about 0.75 s. Matches run after about 1.3 s and are re-checked before they fire, so the human can win a matching race.
+`GameController` (`src/ui/controller.ts`) keeps the authoritative `GameState` in memory. The UI renders only the human's `PlayerView`. After every change each CPU looks at its own view and, if it wants to act, starts a timer: its turn delay, or its match reaction time. When the timer fires it decides again from a fresh view, because the table may have changed. A pending match timer is kept while the discard pile is unchanged, so one CPU's actions don't keep resetting another CPU's reaction time, and a quick human can still win the race. The controller also records:
+
+- **flashes:** cards briefly shown face up to the human, after their own peek or a public wrong match
+- **highlights:** cards that just changed, so CPU actions are easy to follow
+
+### Testing layers
+
+- **Engine and AI unit tests:** rigged card layouts, invalid actions, visibility, AI knowledge restrictions, and complete CPU-only games with 2, 3 and 4 players that check card conservation after every action.
+- **UI logic tests:** targeting rules, settings validation, seat layout.
+- **jsdom integration tests:** load the real `index.html` and `main.ts`, then click through setup, abilities, matching and complete 2/3/4-player games with fake timers.
+- **Real browser** (`npm run test:e2e`): plays games in headless Firefox against the production build. It checks computed layout, page errors and hidden-card leaks, and saves screenshots.
 
 ## Toward multiplayer
 
