@@ -20,6 +20,10 @@ Then visit https://doctordoomies.github.io/Kombio/ after deployment.
 - KOMBIO call and round scoring
 - Single-player computer opponent
 
+## Current limitations
+
+The single-player interface uses a turn-based matching window rather than true simultaneous, real-time matching. The CPU does not yet challenge matches, and special-card behavior and scoring still need dedicated tests against the official rules. This is not a finished or fully verified rules implementation.
+
 ## Roadmap
 
 1. Check game rules and add tests
