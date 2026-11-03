@@ -1,4 +1,5 @@
-import { applyAction, createGame, type Action, type GameEvent, type GameState, type RulesConfig } from '../src/engine';
+import { decideAction, decideMatch, PROFILES, type Difficulty } from '../src/ai/opponent';
+import { applyAction, createGame, getPlayerView, type Action, type GameEvent, type GameState, type RulesConfig } from '../src/engine';
 
 export function newGame(players = 2, seed = 1, rules: Partial<RulesConfig> = {}): GameState {
   return createGame({ players: Array.from({ length: players }, (_, i) => `P${i}`), seed, rules }).state;
@@ -62,4 +63,29 @@ export function cardCount(state: GameState): number {
   const r = state.round;
   const held = r.step.kind === 'holding' ? 1 : 0;
   return r.deck.length + r.discard.length + held + r.hands.flat().filter(Boolean).length;
+}
+
+/**
+ * Plays a complete game with computer players only. Every action goes through
+ * the engine's validation; card conservation is checked after every action.
+ */
+export function autoplayGame(seed: number, seats: Difficulty[], rounds: number, rules: Partial<RulesConfig> = {}): GameState {
+  let { state } = createGame({ players: seats.map((d, i) => `${d}${i}`), seed, rules: { maxRounds: rounds, ...rules } });
+  const total = cardCount(state);
+  for (let i = 0; i < 50000 && !state.gameOver; i++) {
+    if (state.round.phase === 'ended') {
+      state = act(state, { type: 'nextRound', player: 0 }).state;
+      continue;
+    }
+    let action: Action | null = null;
+    for (let p = 0; p < seats.length && !action; p++) action = decideMatch(getPlayerView(state, p), PROFILES[seats[p]], seed + p);
+    for (let p = 0; p < seats.length && !action; p++) action = decideAction(getPlayerView(state, p), PROFILES[seats[p]], seed + p);
+    if (!action) throw new Error(`no player could act (seed ${seed}, step ${i})`);
+    const r = applyAction(state, action);
+    if (!r.ok) throw new Error(`AI chose illegal ${JSON.stringify(action)}: ${r.error} (seed ${seed})`);
+    state = r.state;
+    if (state.round.phase !== 'ended' && cardCount(state) !== total) throw new Error(`card count changed (seed ${seed})`);
+  }
+  if (!state.gameOver) throw new Error(`game did not finish (seed ${seed})`);
+  return state;
 }
