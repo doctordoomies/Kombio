@@ -7,43 +7,116 @@
   </head>
   <body>
     <main>
-      <header>
+      <header class="topbar">
         <div>
           <h1>KOMBIO</h1>
           <small class="muted">BROWSER EDITION · Memory, Strategy, Risk</small>
         </div>
-        <div id="score" aria-live="polite"></div>
+        <div id="settings-summary" class="muted"></div>
+        <button id="new-game" class="action" hidden>New game</button>
       </header>
-      <section class="panel">
-        <h3>Computer Opponent</h3>
-        <div id="enemy" class="cards"></div>
-        <div id="turn" class="muted"></div>
+
+      <section id="setup" class="panel setup" aria-labelledby="setup-title">
+        <h2 id="setup-title">New game</h2>
+        <form id="setup-form">
+          <fieldset>
+            <legend>Players</legend>
+            <div class="choices" id="players-choices">
+              <label><input type="radio" name="players" value="2" /> <span>2 players<small>you + 1 CPU</small></span></label>
+              <label><input type="radio" name="players" value="3" /> <span>3 players<small>you + 2 CPUs</small></span></label>
+              <label><input type="radio" name="players" value="4" /> <span>4 players<small>you + 3 CPUs</small></span></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>CPU difficulty</legend>
+            <div class="choices" id="difficulty-choices">
+              <label><input type="radio" name="difficulty" value="easy" /> <span>Easy<small>Forgets cards, makes careless moves, slow to match.</small></span></label>
+              <label><input type="radio" name="difficulty" value="normal" /> <span>Normal<small>Remembers what it sees and plays sensibly.</small></span></label>
+              <label><input type="radio" name="difficulty" value="hard" /> <span>Hard<small>Reads the table, targets the leader, quick to match.</small></span></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Game length</legend>
+            <div class="choices" id="length-choices">
+              <label><input type="radio" name="length" value="unlimited" /> <span>Unlimited<small>play as many rounds as you like</small></span></label>
+              <label><input type="radio" name="length" value="rounds" /> <span>Fixed rounds<small><input type="number" name="rounds" min="1" max="20" aria-label="Number of rounds" /> rounds</small></span></label>
+              <label><input type="radio" name="length" value="score" /> <span>Score limit<small>ends at <input type="number" name="scoreLimit" min="20" max="500" step="5" aria-label="Score limit" /> points</small></span></label>
+            </div>
+          </fieldset>
+          <div class="setup-summary">
+            <b>Settings</b>
+            <ul id="setup-summary-list"></ul>
+          </div>
+          <div class="actions">
+            <button type="submit" class="action primary" id="start-game">Start game</button>
+            <button type="button" class="action" id="resume-game" hidden>Resume current game</button>
+          </div>
+        </form>
       </section>
-      <div class="piles">
-        <div><button class="card back" id="deck" aria-label="Draw deck">✦</button><p class="muted" id="deckcount">Deck</p></div>
-        <div><button class="card" id="discard" aria-label="Discard pile">—</button><p class="muted">Discard pile</p></div>
-        <div id="heldbox" hidden><button class="card" id="held" disabled>?</button><p class="muted" id="heldlabel">Drawn card</p></div>
-      </div>
-      <section class="panel">
-        <h3>Your Cards</h3>
-        <div class="muted">Remember the positions of cards you have seen. Outlined cards are ones you have seen.</div>
-        <div id="hand" class="cards"></div>
-        <p id="message" aria-live="polite"></p>
-        <p id="error" role="alert"></p>
-        <div id="actions" class="actions"></div>
+
+      <section id="game" class="game" hidden>
+        <div class="table" id="table">
+          <div class="area area-left" id="area-left"></div>
+          <div class="area area-top" id="area-top"></div>
+          <div class="area area-right" id="area-right"></div>
+          <div class="area area-center">
+            <div id="turn-banner" class="banner" aria-live="polite"></div>
+            <div class="piles">
+              <div class="pile">
+                <button class="card back" id="deck" aria-label="Draw deck" title="Draw from the deck (D)">✦</button>
+                <p class="muted" id="deckcount">Deck</p>
+              </div>
+              <div class="pile">
+                <button class="card" id="discard" aria-label="Discard pile" title="Take the discard (T)">—</button>
+                <p class="muted" id="discardlabel">Discard</p>
+              </div>
+              <div class="pile" id="heldbox" hidden>
+                <button class="card" id="held" disabled>?</button>
+                <p class="muted" id="heldlabel">Drawn card</p>
+              </div>
+            </div>
+          </div>
+          <div class="area area-bottom">
+            <section class="seat seat-human" id="seat-0">
+              <div class="seat-head" id="seat-0-head"></div>
+              <div id="hand" class="cards"></div>
+              <p id="message" aria-live="polite"></p>
+              <p id="error" role="alert"></p>
+              <div id="actions" class="actions"></div>
+              <p class="muted keys">Keys: <kbd>D</kbd> draw · <kbd>T</kbd> take discard · <kbd>M</kbd> match · <kbd>S</kbd> skip ability · <kbd>Esc</kbd> cancel</p>
+            </section>
+          </div>
+        </div>
+        <aside class="sidebar">
+          <section class="panel">
+            <h3>Scoreboard</h3>
+            <div id="scoreboard"></div>
+          </section>
+          <section class="panel">
+            <h3>Game log</h3>
+            <div id="log" class="log"></div>
+          </section>
+          <section class="panel">
+            <h3>Abilities</h3>
+            <ul class="muted abilities">
+              <li><b>7–8</b> look at one of your cards</li>
+              <li><b>9–10</b> look at an opponent's card</li>
+              <li><b>11–12</b> swap any two cards, unseen</li>
+              <li><b>13</b> look at any card, then you may swap it</li>
+              <li><b>14</b> look at any two cards, then you may swap them</li>
+            </ul>
+            <p class="muted">Only cards drawn from the deck and discarded have abilities. Match the top discard any time; a wrong guess costs a penalty card.</p>
+          </section>
+        </aside>
       </section>
-      <div class="layout">
-        <section class="panel">
-          <b>How to play</b>
-          <p class="muted">
-            Memorize your bottom two cards, then hide them. On your turn draw from the deck or take the top discard and
-            exchange it with one of your cards. A card drawn from the deck can instead be discarded to use its ability
-            (7–8 look at yours, 9–10 look at the opponent's, 11–12 blind swap, 13 look &amp; swap, 14 double look &amp;
-            swap). At any time you may match the top discard with a card of the same value from either hand — a wrong
-            guess costs a penalty card. Lowest score wins; call KOMBIO in place of a turn to end the round.
-          </p>
-        </section>
-        <section class="panel"><b>Round log</b><div id="log" class="log"></div></section>
+
+      <div id="summary" class="overlay" hidden>
+        <div class="dialog panel" role="dialog" aria-modal="true" aria-labelledby="summary-title">
+          <h2 id="summary-title">Round summary</h2>
+          <p id="summary-caller"></p>
+          <div id="summary-body"></div>
+          <div class="actions" id="summary-actions"></div>
+        </div>
       </div>
     </main>
     <script type="module" src="./src/main.ts"></script>
